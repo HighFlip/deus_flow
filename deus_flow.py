@@ -1,6 +1,5 @@
 from prefect import flow, task
-from deus_flow_model import Context, Scope, Step, Action, Tool, Wisdom, Plan, ContextManager
-from deus_utils import llm_call, get_prompt, update_context, execute_action, get_wisdom
+from model.flow_model import ContextManager
 
 
 @flow(log_prints=True)
@@ -29,13 +28,6 @@ def core_loop(context_manager: ContextManager):
         context_manager.task_handler()
         context_manager.add_iteration()
 
-@task
-def planner(context_manager: ContextManager):
-    context = context_manager.current_context
-    get_wisdom(context)
-    prompt = get_prompt(context, 'planner')
-    response = llm_call(prompt)
-    context_manager.add_llm_log(prompt, response)
     
 
 
