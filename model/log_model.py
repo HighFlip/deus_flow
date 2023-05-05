@@ -12,6 +12,22 @@ class Log:
     def __init__(self, feedback: Feedback = None):
         self.timestamp = datetime.now()
         self.feedback = feedback
+
+class CandidateToolsLog(Log):
+    candidate_tools: Dict[int:Tool]
+
+    def __init__(self, candidate_tools: Dict[int:Tool], feedback: Feedback = None):
+        super().__init__(feedback=feedback)
+        self.candidate_tools = candidate_tools
+
+class ExecutionLog(Log):
+    action: Action
+    input: str
+    output: str
+
+    def __init__(self, action: Action, feedback: Feedback = None):
+        super().__init__(feedback=feedback)
+        self.action = action
     
 class LLMLog(Log):
     prompt: str
@@ -62,13 +78,6 @@ class PlanUpdateLog(LLMLog):
         self.previous_plan = previous_plan
         self.plan = plan
 
-class CandidateToolsLog(Log):
-    candidate_tools: Dict[int:Tool]
-
-    def __init__(self, candidate_tools: Dict[int:Tool], feedback: Feedback = None):
-        super().__init__(feedback=feedback)
-        self.candidate_tools = candidate_tools
-
 class ToolSelectionLog(LLMLog):
     tools: List[Tool]
 
@@ -81,15 +90,6 @@ class TurnToActionLog(LLMLog):
 
     def __init__(self, prompt: str, response: str, action: Action, feedback: Feedback = None):
         super().__init__(prompt, response, "turn_to_action", feedback=feedback)
-        self.action = action
-
-class ExecutionLog(Log):
-    action: Action
-    input: str
-    output: str
-
-    def __init__(self, action: Action, feedback: Feedback = None):
-        super().__init__(feedback=feedback)
         self.action = action
     
     

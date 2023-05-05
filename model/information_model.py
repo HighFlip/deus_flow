@@ -1,5 +1,4 @@
-from typing import List, Dict, Callable
-from log_model import Log
+from typing import List, Callable
 import copy
 
 class Scope:
@@ -11,20 +10,17 @@ class Scope:
     def __init__(self, user_query: str, user_goal: str, constraints: List[str] = [], requirements: List[str] = [], resources: List[str] = [], description: str = None):
         self.user_query = user_query
         self.user_goal = user_goal
-        self.constraints = constraints
         self.requirements = requirements
-        self.resources = resources
         self.description = description
 
     def add_refinements(self, refinements: List[str]):
         self.requirements.extend(refinements['requirements'])
 
-
     def copy(self):
-        return Scope(self.user_query, self.user_goal, self.constraints.copy(), self.requirements.copy(), self.resources.copy(), self.description)
+        return Scope(self.user_query, self.user_goal, self.requirements.copy(), self.description)
 
     def __str__(self):
-        return f"Constraints = {self.constraints}\nRequirements = {self.requirements}\nResources = {self.resources}\n"
+        return f"Requirements = {self.requirements}"
 
 class Step:
     id: int
