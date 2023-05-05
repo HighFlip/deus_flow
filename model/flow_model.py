@@ -47,6 +47,18 @@ class ContextManager:
         self.context = context or Context(Scope(user_query, user_goal))
         self.logger = logger(self.context)
 
+    def retrieve_user_goal(self, user_query: str) -> str:
+        prompt = self.prompts['retrieve_goal'].format(user_query=user_query)
+        response = llm_call(prompt)
+        refinement = self.parse_scope(response)
+        goal = refinement['user_goal'][0]
+        if goal:
+            self.log(GoalUpdateLog(prompt, response, None, goal))
+            return goal
+        else:
+            self.log(GoalUpdateLog(prompt, response, None, "Goal not found"))
+            return self.retrieve_user_goal(user_query)
+        
     def add_iteration(self):
         self.logger.add_iteration()
 
@@ -63,52 +75,6 @@ class ContextManager:
         refinements = self.parse_refinement(answer)
         self.context.scope.add_refinements(refinements)
         self.log(RefinementLog(prompt, question, answer, refinements))
-
-    def parse_refinement(self, answer: str):
-        prompt = self.prompts['parse_scope'].format(user_goal=self.context.scope.user_goal, 
-                                                    answer=answer)
-        response = self.llm_call(prompt)
-        refinement = self.parse_scope(response)
-        return refinement
-
-    def retrieve_user_goal(self, user_query: str) -> str:
-        prompt = self.prompts['retrieve_goal'].format(user_query=user_query)
-        response = llm_call(prompt)
-        refinement = self.parse_scope(response)
-        goal = refinement['user_goal'][0]
-        if goal:
-            self.log(GoalUpdateLog(prompt, response, None, goal))
-            return goal
-        else:
-            self.log(GoalUpdateLog(prompt, response, None, "Goal not found"))
-            return self.retrieve_user_goal(user_query)
-        
-    def parse_scope(self, result: str):
-        result = result.lower()
-        result = result.replace('\n', '').replace('\r', '')
-        
-        # Parse user goal
-        goal_match = re.search(r'user_goal:\s*([\w\s]+)[.,]', result)
-        if goal_match:
-            goal = goal_match.group(1).strip()
-        
-        # Parse requirements, constraints, and resources
-        req_match = re.search(r'requirements:\s*\[([^\]]*)\]', result)
-        if req_match:
-            requirements = [req.strip() for req in req_match.group(1).split(',')]
-        
-        # Handle edge cases for empty lists
-        if not requirements or requirements == ['']:
-            requirements = []
-        
-        # Handle edge cases for capitalization
-        if goal:
-            goal = goal.capitalize()
-        if requirements:
-            requirements = [req.capitalize() for req in requirements]
-
-        return {'goal': goal,
-                'requirements': requirements}
     
     def validate_scope(self) -> bool:
         prompt = self.prompts['validate_scope'].format(user_goal=self.context.scope.user_goal, 
@@ -120,15 +86,6 @@ class ContextManager:
             response = self.llm_call(prompt)
             self.context.scope.description = response
             return True
-        else:
-            return False
-
-    def parse_bool(self, response: str) -> bool:
-        response = response.lower()
-        if response in ['yes', 'y']:
-            return True
-        elif response in ['no', 'n']:
-            return False
         else:
             return False
 
@@ -146,9 +103,6 @@ class ContextManager:
         self.context.plan = self.parse_plan(response)
         self.context.current_step = self.context.plan.get_current_step()
         self.log(PlanUpdateLog(prompt, response, previous_plan, self.context.plan))
-
-    def parse_plan(self):
-        pass
 
     def task_handler(self):
         active_step = self.context.current_step
@@ -181,8 +135,6 @@ class ContextManager:
         self.log(ToolSelectionLog(prompt, response, tools, feedback=feedback))
         return tools, feedback
 
-    def parse_tools_and_feedback(self, response: str) -> List[Tool]:
-        pass
 
     def turn_to_action(self, step: Step, tools: List[Tool], prev_feedback: Feedback) -> Action:
         if prev_feedback.success:
@@ -195,8 +147,6 @@ class ContextManager:
         else:
             return None
 
-    def parse_action_and_feedback(self, response: str) -> Tuple[Action, Feedback]:
-        pass
 
     def execute(self, action: Action, prev_feedback: Feedback):
         if action:
@@ -206,6 +156,58 @@ class ContextManager:
 
 
     def monitor(self, func: Callable, args: str, feedback: Feedback):
+        pass
+
+    def parse_bool(self, response: str) -> bool:
+        response = response.lower()
+        if response in ['yes', 'y']:
+            return True
+        elif response in ['no', 'n']:
+            return False
+        else:
+            return False
+
+    def parse_refinement(self, answer: str) -> Dict[str, List[str]]:
+        prompt = self.prompts['parse_scope'].format(user_goal=self.context.scope.user_goal, 
+                                                    answer=answer)
+        response = self.llm_call(prompt)
+        refinement = self.parse_scope(response)
+        return refinement
+        
+    def parse_scope(self, result: str) -> Dict[str, List[str]]:
+        result = result.lower()
+        result = result.replace('\n', '').replace('\r', '')
+        
+        # Parse user goal
+        goal_match = re.search(r'user_goal:\s*([\w\s]+)[.,]', result)
+        if goal_match:
+            goal = goal_match.group(1).strip()
+        
+        # Parse requirements, constraints, and resources
+        req_match = re.search(r'requirements:\s*\[([^\]]*)\]', result)
+        if req_match:
+            requirements = [req.strip() for req in req_match.group(1).split(',')]
+        
+        # Handle edge cases for empty lists
+        if not requirements or requirements == ['']:
+            requirements = []
+        
+        # Handle edge cases for capitalization
+        if goal:
+            goal = goal.capitalize()
+        if requirements:
+            requirements = [req.capitalize() for req in requirements]
+
+        return {'goal': goal,
+                'requirements': requirements}
+    
+    def parse_plan(self) -> Plan:
+        pass
+    
+    def parse_tools_and_feedback(self, response: str) -> Tuple[List[Tool], Feedback]:
+        pass
+
+    def parse_action_and_feedback(self, response: str) -> Tuple[Action, Feedback]:
         pass
 
     def llm_call(self, prompt: str) -> str:
