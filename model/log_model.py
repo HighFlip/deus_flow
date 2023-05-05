@@ -11,7 +11,7 @@ class Log:
     
     def __init__(self, feedback: Feedback = None):
         self.timestamp = datetime.now()
-        self.message = feedback
+        self.feedback = feedback
     
 class LLMLog(Log):
     prompt: str
@@ -26,16 +26,6 @@ class LLMLog(Log):
     
     def __str__(self):
         return f"{self.timestamp}: \nPrompt = {self.prompt},\nResponse = {self.response}\nFeedback = {self.feedback}"
-    
-class ActionLog(Log):
-    action: Action
-
-    def __init__(self, action: Action, feedback: Feedback = None):
-        super().__init__(action.description, feedback=feedback)
-        self.action = action
-    
-    def __str__(self):
-        return f"{self.timestamp}: \nAction = {self.action}"
     
 class RefinementLog(LLMLog):
     question: str
@@ -91,6 +81,15 @@ class TurnToActionLog(LLMLog):
 
     def __init__(self, prompt: str, response: str, action: Action, feedback: Feedback = None):
         super().__init__(prompt, response, "turn_to_action", feedback=feedback)
+        self.action = action
+
+class ExecutionLog(Log):
+    action: Action
+    input: str
+    output: str
+
+    def __init__(self, action: Action, feedback: Feedback = None):
+        super().__init__(feedback=feedback)
         self.action = action
     
     

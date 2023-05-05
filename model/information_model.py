@@ -2,13 +2,10 @@ from typing import List, Dict, Callable
 from log_model import Log
 import copy
 
-
 class Scope:
     user_query: str
     user_goal: str
-    constraints: List[str]
     requirements: List[str]
-    resources: List[str]
     description: str
 
     def __init__(self, user_query: str, user_goal: str, constraints: List[str] = [], requirements: List[str] = [], resources: List[str] = [], description: str = None):
@@ -19,10 +16,9 @@ class Scope:
         self.resources = resources
         self.description = description
 
-    def add_refinements(self, refinements: Dict[str: List[str]]):
-        self.constraints.extend(refinements['constraints'])
+    def add_refinements(self, refinements: List[str]):
         self.requirements.extend(refinements['requirements'])
-        self.resources.extend(refinements['resources'])
+
 
     def copy(self):
         return Scope(self.user_query, self.user_goal, self.constraints.copy(), self.requirements.copy(), self.resources.copy(), self.description)
@@ -78,12 +74,25 @@ class Tool:
         return Tool(self.id, self.name, self.description, self.func, self.input_format)
 
 class Feedback:
-    message: str
+    messages: List[str]
+    summary: str
+    success: bool
 
-    def __init__(self, message: str):
-        self.message = message
-
-
+    def __init__(self, messages: List[str], summary: str = None, success: bool = False):
+        self.messages = messages
+        self.summary = summary
+        self.success = success
+    
+    def copy(self):
+        return Feedback(self.messages.copy(), self.summary, self.success)
+    
+    def append(self, feedback):
+        if isinstance(feedback, Feedback):
+            self.messages.extend(feedback.messages)
+        elif isinstance(feedback, str):
+            self.messages.append(feedback)
+        else:
+            raise Exception("Invalid feedback type")    
 
 class Action:
     id: str
@@ -122,6 +131,9 @@ class Plan:
         for step in self.steps:
             if step.accomplished == False:
                 return step
-            
+    
+    def check_accomplished(self):
+        return all(step.accomplished for step in self.steps)
+
     def copy(self):
         return Plan(copy.deepcopy(self.steps))

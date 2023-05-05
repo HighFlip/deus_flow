@@ -2,8 +2,6 @@ ask_user_prompt = """As the agent defining the scope of a task for an autonomous
     {user_query}
     The scope that needs to be determined must contain the following information:
     Requirements: The specific needs of the task that must be fulfilled by the AI system.
-    Constraints: The limitations of the task that must be considered by the AI system.
-    Resources: The resources available to the AI system to complete the task.
 
     You must output your questions as a JSON object in the following format:
     \{questions: [question1, question2, ...]\}"""
@@ -33,10 +31,20 @@ create_plan_prompt = """As the planner for an autonomous AI system, create a pla
     You MUST output the plan as a JSON object in the following format:
     \{step_1: desc_1, step_2: desc_2, step_3: desc_3\}"""
 
+update_plan_prompt = """{description}, {feedback}, {previous_plan}"""
+
+tool_selection_prompt = """{step}, {candidate_tools}"""
+
+turn_to_action_prompt = """{step}, {tools}"""
+
+
 prompts = {'ask_user': ask_user_prompt,
     'parse_scope': parse_scope_prompt,
     'retrieve_goal': retrieve_goal_prompt,
     'validate_scope': validate_scope_prompt,
     'describe_scope': describe_scope_prompt,
-    'create_plan': create_plan_prompt}
+    'create_plan': create_plan_prompt,
+    'update_plan': update_plan_prompt,
+    'tool_selection': tool_selection_prompt,
+    'turn_to_action': turn_to_action_prompt}
 

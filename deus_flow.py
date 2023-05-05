@@ -23,7 +23,7 @@ def ask_user_flow(context_manager: ContextManager):
 
 @flow(log_prints=True)
 def core_loop(context_manager: ContextManager):
-    while (context_manager.current_context.finished!=True):
+    while (context_manager.context.finished!=True):
         context_manager.planner()
         context_manager.task_handler()
         context_manager.add_iteration()
