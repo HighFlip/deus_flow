@@ -79,11 +79,11 @@ class PlanUpdateLog(LLMLog):
         self.plan = plan
 
 class ToolSelectionLog(LLMLog):
-    tools: List[Tool]
+    tool: Tool
 
-    def __init__(self, prompt: str, response: str, tools: List[Tool], feedback: Feedback = None):
+    def __init__(self, prompt: str, response: str, tool: Tool, feedback: Feedback = None):
         super().__init__(prompt, response, "tool_selection", feedback=feedback)
-        self.tools = tools
+        self.tool = tool
 
 class TurnToActionLog(LLMLog):
     action: Action

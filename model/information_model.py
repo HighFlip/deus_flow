@@ -26,7 +26,6 @@ class Step:
     id: int
     name: str
     goal: str
-    tools: List[Tool]
     action: Action
     feedback: Feedback
     accomplished: bool = False
@@ -56,7 +55,7 @@ class Step:
 
 
 class Tool:
-    id: str
+    id: int
     name: str
     description: str
     func: Callable
@@ -98,8 +97,6 @@ class Feedback:
 
 class Action:
     id: str
-    name: str
-    description: str
     step: Step
     tool: Tool
     tool_input: str
@@ -107,16 +104,12 @@ class Action:
     feedback: Feedback
 
     def __init__(self, id: str, 
-                 name: str, 
-                 description: str, 
                  step: Step, 
                  tool: Tool, 
                  tool_input: str, 
                  output: str = None, 
                  feedback: Feedback = None):
         self.id = id
-        self.name = name
-        self.description = description
         self.step = step
         self.tool = tool
         self.tool_input = tool_input

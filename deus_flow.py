@@ -27,12 +27,3 @@ def core_loop(context_manager: ContextManager):
         context_manager.planner()
         context_manager.task_handler()
         context_manager.add_iteration()
-
-    
-
-
-
-
-
-
-

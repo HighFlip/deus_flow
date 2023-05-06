@@ -92,7 +92,7 @@ Based on the step description, the following candidate tools have been identifie
 
 {candidate_tools}
 
-After careful consideration, please choose the tool or combination of tools that you believe would work best for this task, create a feedback object with an explanation of your thought process. Output your selection as a JSON object in the following format:
+After careful consideration, please choose the tool that you believe would work best for this task, create a feedback object with an explanation of your thought process. Output your selection as a JSON object in the following format:
 
 {
   "tool": tool_name, 
@@ -104,23 +104,21 @@ After careful consideration, please choose the tool or combination of tools that
 
 If none of the candidate tools would be suitable for this task, please output a feedback object with the success field set to False and an explanation of why the task cannot be accomplished with the given tools.
 
+Similarly, if you think the step should be accomplished with a combination of tools, please output a feedback object with the success field set to False and an explanation of why the task cannot be accomplished with a single tool.
+
 Make sure to strictly follow these formats and not include any additional text in your response."""
 
-turn_to_action_prompt = """As the operator for an autonomous AI system, turn the following step into an action by providing the necessary input to the selected tool(s):
+turn_to_action_prompt = """As the operator for an autonomous AI system, turn the following step into an action by providing the necessary input to the selected tool:
 
 Step: {step}
 
 Tool Descriptions:
 {tool_descriptions}
 
-Using the selected tool(s), provide an input to complete the step, and output the result as a JSON object in the following format:
+Using the selected tool, provide an input to complete the step, and output the result as a JSON object in the following format:
 
 {
-  "action": {
-    "tool_1": "input_1", 
-    "tool_2": "input_2",
-    ...
-    },
+  "action": {"tool_input": "input_here"}
   "feedback": {
     "success": true/false,
     "message": "feedback_message"
