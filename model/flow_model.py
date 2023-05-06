@@ -1,4 +1,4 @@
-import re
+import re, json
 from datetime import datetime
 from typing import Dict, List, Tuple, Callable
 from enum import Enum
@@ -50,8 +50,8 @@ class ContextManager:
     def retrieve_user_goal(self, user_query: str) -> str:
         prompt = self.prompts['retrieve_goal'].format(user_query=user_query)
         response = llm_call(prompt)
-        refinement = self.parse_scope(response)
-        goal = refinement['user_goal'][0]
+        result = self.parse_response(response)
+        goal = result['user_goal']
         if goal:
             self.log(GoalUpdateLog(prompt, response, None, goal))
             return goal
@@ -69,19 +69,21 @@ class ContextManager:
         prompt = self.prompts['ask_user'].format(user_query=self.context.scope.user_query)
         question = self.llm_call(prompt)
         user_answer = ...
-        self.add_refinements(prompt, question, user_answer)
+        self.add_requirements(prompt, question, user_answer)
 
-    def add_refinements(self, prompt: str, question: str, answer: str):
-        refinements = self.parse_refinement(answer)
-        self.context.scope.add_refinements(refinements)
-        self.log(RefinementLog(prompt, question, answer, refinements))
+    def add_requirements(self, prompt: str, question: str, answer: str):
+        requirements = self.retrieve_requirements(answer)
+        self.context.scope.add_requirements(requirements)
+        self.log(RefinementLog(prompt, question, answer, requirements))
     
     def validate_scope(self) -> bool:
         prompt = self.prompts['validate_scope'].format(user_goal=self.context.scope.user_goal, 
                                                        history=self.logger.get_questions_answers(),
                                                        scope=self.context.scope)
         response = self.llm_call(prompt)
-        if self.parse_bool(response):
+        result = self.parse_response(response)
+        feedback = result['feedback']
+        if feedback.success:
             prompt = self.prompts['describe_scope'].format(user_goal=self.context.scope.user_goal, scope=self.context.scope)
             response = self.llm_call(prompt)
             self.context.scope.description = response
@@ -100,7 +102,8 @@ class ContextManager:
                                                         feedback=self.context.current_feedback,
                                                         previous_plan=self.context.plan)
             response = self.llm_call(prompt)
-        self.context.plan = self.parse_plan(response)
+        result = self.parse_response(response)
+        self.context.plan = result['plan']
         self.context.current_step = self.context.plan.get_current_step()
         self.log(PlanUpdateLog(prompt, response, previous_plan, self.context.plan))
 
@@ -119,7 +122,7 @@ class ContextManager:
                     self.context.finished = True
                 
         else:
-            feedback = Feedback(["No active step found"])
+            feedback = Feedback("No active step found", success=False)
 
         self.context.current_feedback = feedback
         self.logger.logs[-1].feedback = feedback
@@ -131,7 +134,9 @@ class ContextManager:
     def tool_selection(self, step: Step, candidate_tools: List[Tool]) -> Tuple[List[Tool], Feedback]:
         prompt = self.prompts['tool_selection'].format(step=step, candidate_tools=candidate_tools)
         response = self.llm_call(prompt)
-        tools, feedback = self.parse_tools_and_feedback(response)
+        result = self.parse_response(response)
+        tools = result['tools']
+        feedback = result['feedback']
         self.log(ToolSelectionLog(prompt, response, tools, feedback=feedback))
         return tools, feedback
 
@@ -140,7 +145,9 @@ class ContextManager:
         if prev_feedback.success:
             prompt = self.prompts['turn_to_action'].format(step=step, tools=tools)
             response = self.llm_call(prompt)
-            action, feedback = self.parse_action_and_feedback(response)
+            result = self.parse_response(response)
+            action = result['action']
+            feedback = result['feedback']
             self.log(TurnToActionLog(prompt, response, action, feedback=feedback))
             prev_feedback.append(feedback)
             return action
@@ -155,59 +162,72 @@ class ContextManager:
             prev_feedback.append(feedback)
 
 
-    def monitor(self, func: Callable, args: str, feedback: Feedback):
+    def monitor(self, func: Callable, args: str, feedback: Feedback) -> Tuple[str, Feedback]:
         pass
 
-    def parse_bool(self, response: str) -> bool:
-        response = response.lower()
-        if response in ['yes', 'y']:
-            return True
-        elif response in ['no', 'n']:
-            return False
-        else:
-            return False
-
-    def parse_refinement(self, answer: str) -> Dict[str, List[str]]:
-        prompt = self.prompts['parse_scope'].format(user_goal=self.context.scope.user_goal, 
-                                                    answer=answer)
+    def retrieve_requirements(self, answer: str) -> Dict[str, List[str]]:
+        prompt = self.prompts['retrieve_requirements'].format(user_goal=self.context.scope.user_goal, 
+                                                            answer=answer)
         response = self.llm_call(prompt)
-        refinement = self.parse_scope(response)
-        return refinement
+        result = self.parse_response(response)
+        return result['requirements']
         
-    def parse_scope(self, result: str) -> Dict[str, List[str]]:
-        result = result.lower()
-        result = result.replace('\n', '').replace('\r', '')
+    def parse_response(self, response: str):
+        # parse the JSON object from the response
+        try:
+            # Remove leading/trailing whitespace and newlines
+            response = response.strip()
+            # Try parsing JSON from response as single line
+            json_obj = json.loads(response)
+        except json.JSONDecodeError:
+            # Try parsing JSON from response as multiline
+            try:
+                json_obj = json.loads(response.replace('\n', ''))
+            except json.JSONDecodeError as e:
+                print(f"Error parsing JSON: {str(e)}")
+                # handle the error or exit the program
         
-        # Parse user goal
-        goal_match = re.search(r'user_goal:\s*([\w\s]+)[.,]', result)
-        if goal_match:
-            goal = goal_match.group(1).strip()
-        
-        # Parse requirements, constraints, and resources
-        req_match = re.search(r'requirements:\s*\[([^\]]*)\]', result)
-        if req_match:
-            requirements = [req.strip() for req in req_match.group(1).split(',')]
-        
-        # Handle edge cases for empty lists
-        if not requirements or requirements == ['']:
-            requirements = []
-        
-        # Handle edge cases for capitalization
-        if goal:
-            goal = goal.capitalize()
-        if requirements:
-            requirements = [req.capitalize() for req in requirements]
+        result = {}
 
-        return {'goal': goal,
-                'requirements': requirements}
-    
-    def parse_plan(self) -> Plan:
-        pass
-    
-    def parse_tools_and_feedback(self, response: str) -> Tuple[List[Tool], Feedback]:
-        pass
+        # retrieve the "requirements" key from the dictionary, if present
+        if "requirements" in json_obj:
+            requirements = json_obj["requirements"]
+            print(requirements)
+            result['requirements'] = requirements
+        if "user_goal" in json_obj:
+            user_goal = json_obj["user_goal"]
+            print(user_goal)
+            result['user_goal'] = user_goal
+        if "plan" in json_obj:
+            plan_dict = json_obj["plan"]
+            steps = []
+            for step_name, description in plan_dict.items():
+                step = Step(step_name, description)
+                steps.append(step)
+            plan = Plan(steps)
+            print(plan)
+            result['plan'] = plan
+        if "tools" or "tool" in json_obj:
+            tools_dict = json_obj["tools"]
+            tools = self.query_tools(tools_dict)
+            print(tools)
+            result['tools'] = tools
+        if "action" in json_obj:
+            action = json_obj["action"]
+            print(action)
+            result['action'] = action
+        if "feedback" in json_obj:
+            feedback_dict = json_obj["feedback"]
+            message = feedback_dict["message"]
+            success = True if feedback_dict["success"].lower() in ["true", "t", "success"] else False
+            feedback = Feedback(message, success=success)
+            print(feedback)
+            result['feedback'] = feedback
+        
+        return result
 
-    def parse_action_and_feedback(self, response: str) -> Tuple[Action, Feedback]:
+    def query_tools(self, tools_dict: Dict[str, str]) -> List[Tool]:
+        # query the database for the tools
         pass
 
     def llm_call(self, prompt: str) -> str:

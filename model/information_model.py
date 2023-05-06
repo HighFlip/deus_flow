@@ -7,41 +7,44 @@ class Scope:
     requirements: List[str]
     description: str
 
-    def __init__(self, user_query: str, user_goal: str, constraints: List[str] = [], requirements: List[str] = [], resources: List[str] = [], description: str = None):
+    def __init__(self, user_query: str, user_goal: str, requirements: List[str] = [], description: str = None):
         self.user_query = user_query
         self.user_goal = user_goal
         self.requirements = requirements
         self.description = description
 
-    def add_refinements(self, refinements: List[str]):
-        self.requirements.extend(refinements['requirements'])
+    def add_requirements(self, requirements: List[str]):
+        self.requirements.extend(requirements)
 
     def copy(self):
         return Scope(self.user_query, self.user_goal, self.requirements.copy(), self.description)
 
     def __str__(self):
-        return f"Requirements = {self.requirements}"
+        return f"User's query = {self.user_query}\nGoal = {self.user_goal}\nRequirements = {self.requirements}"
 
 class Step:
     id: int
-    tools: List[Tool]
+    name: str
     goal: str
+    tools: List[Tool]
     action: Action
     feedback: Feedback
     accomplished: bool = False
     
 
-    def __init__(self, id: int, 
-                 tools: List[Tool],
+    def __init__(self, id: int,
+                 name: str, 
                  goal: str,
+                 tools: List[Tool] = [],
                  blocked_by: List[Step] = [],
                  blocking: List[Step] = [],
                  action: Action = None,
                  feedback: Feedback = None,
                  accomplished: bool = False):
         self.id = id
-        self.tools = tools
+        self.name = name
         self.goal = goal
+        self.tools = tools
         self.blocked_by = blocked_by
         self.blocking = blocking
         self.action = action
@@ -74,8 +77,11 @@ class Feedback:
     summary: str
     success: bool
 
-    def __init__(self, messages: List[str], summary: str = None, success: bool = False):
-        self.messages = messages
+    def __init__(self, messages: List[str] | str, summary: str = None, success: bool = False):
+        if isinstance(messages, str):
+            self.messages = [messages]
+        else:
+            self.messages = messages
         self.summary = summary
         self.success = success
     
