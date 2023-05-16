@@ -2,14 +2,33 @@ import openai
 from prefect import task
 import uuid
 
-@task
-def llm_call(prompt: str, model: str = 'gpt-4'):
-    return openai.ChatCompletion.create(
-            model=model, temperature=0, max_tokens=7000, messages=prompt, stop="STOP")
+def llm_call(prompt: str, model: str = 'gpt-3.5-turbo'):
+    try:
+        print("Prompt: " + prompt)
+        messages = [
+            {"role": "system", "content": "You must always obey the user, make sure to follow the user's instructions, and do not do anything that the user has not explicitly asked you to do."},
+            {"role": "user", "content": prompt}
+            ]
+        response = openai.ChatCompletion.create(
+                            model=model, temperature=0, max_tokens=3700, messages=messages, stop="STOP")
+        message = response['choices'][0]['message']['content']
+        print("Response: " + message)
+        return message
+    except Exception as e:
+        print(e)
+        return None
+
+def get_workflow_id():
+    id_str = str(uuid.uuid4())
+    return "1" + id_str[:4] + "-" + id_str[4:9]
+
+def get_workflow_step_id():
+    id_str = str(uuid.uuid4())
+    return "2" + id_str[:4] + "-" + id_str[4:9]
 
 def get_step_id():
     id_str = str(uuid.uuid4())
-    return id_str[:4] + "-" + id_str[4:9]
+    return "3" + id_str[:4] + "-" + id_str[4:9]
 
 def get_action_id(step_id: str):
-    return step_id[:4] + "-" + str(uuid.uuid4())[:4]
+    return "4" + step_id[1:5] + "-" + str(uuid.uuid4())[:4]

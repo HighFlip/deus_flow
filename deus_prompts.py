@@ -5,7 +5,8 @@ ask_user_prompt = """As an agent responsible for defining the scope of a task fo
 Please output your refining questions as a JSON object in the following format:
 {{"questions": ["question1", "question2", ...]}}
 
-These refining questions will help us establish the scope of the project, which should contain the requirements and constraints for the user's goal."""
+These refining questions will help us establish the scope of the project, which should contain the requirements and constraints for the user's goal.
+{validation_instructions}"""
 
 retrieve_requirements_prompt = """As an agent responsible for defining the scope of a task for an autonomous AI system, your task is to extract the requirements needed to achieve the following user goal based on the answers provided to the refining questions:
 

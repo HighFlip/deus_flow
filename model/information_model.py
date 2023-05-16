@@ -1,5 +1,10 @@
+from __future__ import annotations
 from typing import List, Callable
 import copy
+
+from model.feedback_model import Feedback, FeedbackBundle
+from model.workflow_model import Workflow
+from deus_utils import get_step_id, get_action_id
 
 class Scope:
     user_query: str
@@ -23,15 +28,15 @@ class Scope:
         return f"User's query = {self.user_query}\nGoal = {self.user_goal}\nRequirements = {self.requirements}"
 
 class Step:
-    id: int
+    id: str
     name: str
     goal: str
     action: Action
-    feedback: Feedback
+    feedback: Feedback|FeedbackBundle
     accomplished: bool = False
     
 
-    def __init__(self, id: int,
+    def __init__(self,
                  name: str, 
                  goal: str,
                  tools: List[Tool] = [],
@@ -40,7 +45,7 @@ class Step:
                  action: Action = None,
                  feedback: Feedback = None,
                  accomplished: bool = False):
-        self.id = id
+        self.id = get_step_id()
         self.name = name
         self.goal = goal
         self.tools = tools
@@ -58,7 +63,7 @@ class Tool:
     id: int
     name: str
     description: str
-    func: Callable
+    workflow: Workflow
     input_format: str
 
     def __init__(self, id: str, name: str, description: str, func: Callable, input_format: str):
@@ -71,49 +76,22 @@ class Tool:
     def copy(self):
         return Tool(self.id, self.name, self.description, self.func, self.input_format)
 
-class Feedback:
-    messages: List[str]
-    summary: str
-    success: bool
-
-    def __init__(self, messages: List[str] | str, summary: str = None, success: bool = False):
-        if isinstance(messages, str):
-            self.messages = [messages]
-        else:
-            self.messages = messages
-        self.summary = summary
-        self.success = success
-    
-    def copy(self):
-        return Feedback(self.messages.copy(), self.summary, self.success)
-    
-    def append(self, feedback):
-        if isinstance(feedback, Feedback):
-            self.messages.extend(feedback.messages)
-        elif isinstance(feedback, str):
-            self.messages.append(feedback)
-        else:
-            raise Exception("Invalid feedback type")    
-
 class Action:
     id: str
     step: Step
     tool: Tool
     tool_input: str
-    output: str
-    feedback: Feedback
+    feedback: Feedback|FeedbackBundle
 
-    def __init__(self, id: str, 
+    def __init__(self, 
                  step: Step, 
                  tool: Tool, 
-                 tool_input: str, 
-                 output: str = None, 
+                 tool_input: str,  
                  feedback: Feedback = None):
-        self.id = id
+        self.id = get_action_id(step.id)
         self.step = step
         self.tool = tool
         self.tool_input = tool_input
-        self.output = output
         self.feedback = feedback
 
 class Plan:
