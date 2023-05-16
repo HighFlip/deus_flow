@@ -1,4 +1,5 @@
 # TODO:
+- Add validation prompts and fix small issues with consistency (prompt engineering)
 - Finish validation flow for every llm_call
 - Figure out monitoring
 - Figure out how the data will be stored

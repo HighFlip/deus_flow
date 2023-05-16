@@ -197,12 +197,8 @@ class ContextManager:
         self._log(RefinementLog(prompt, questions, answer, requirements))
     
     def validate_scope(self) -> bool:
-        prompt = self.prompts['validate_scope'].format(user_goal=self.context.scope.user_goal, 
-                                                       history=self.logger.get_questions_answers(),
-                                                       scope=self.context.scope)
-        response = self.llm_call(prompt)
-        json_obj = self._parse_response(response)
-        feedback = self._retrieve_feedback(json_obj)
+        feedback = self._validate_scope_llm_call(self.context.scope.user_goal, 
+                                                 self.logger.get_questions_answers(), self.context.scope, "")
         if feedback.success:
             self.context.scope.description = self._get_scope_description(self.context.scope.user_goal, self.context.scope)
             return True
@@ -212,19 +208,14 @@ class ContextManager:
     def planner(self):
         previous_plan = self.context.plan
         if previous_plan is None:
-            prompt = self.prompts['create_plan'].format(description=self.context.scope.description)
-            response = self.llm_call(prompt)
+            plan = self._create_plan_llm_call(self.context.scope.description)
         else:
-            prompt = self.prompts['update_plan'].format(description=self.context.scope.description, 
-                                                        feedback=self.context.current_feedback,
-                                                        previous_plan=self.context.plan)
-            response = self.llm_call(prompt)
-        json_obj = self._parse_response(response)
-        plan = self._retrieve_plan(json_obj)
+            plan = self._get_plan_update(self.context.scope.description, 
+                                         self.context.current_feedback, 
+                                         previous_plan)
         self.context.plan = plan
         self.context.current_step = plan.get_current_step()
-        self._log(PlanUpdateLog(prompt, response, previous_plan, plan))
-
+    
     def task_handler(self):
         active_step = self.context.current_step
         if active_step:
@@ -304,6 +295,15 @@ class ContextManager:
                 print(f"Error parsing JSON: {str(e)}")
                 # handle the error or exit the program
         return json_obj
+    
+    def _validate_scope_llm_call(self, user_goal: str, history: List[str], scope: Scope) -> Feedback:
+        prompt = self.prompts['validate_scope'].format(user_goal=user_goal, 
+                                                       history=history,
+                                                       scope=scope)
+        response = self.llm_call(prompt)
+        json_obj = self._parse_response(response)
+        feedback = self._retrieve_feedback(json_obj)
+        return feedback
     
     def _get_scope_description(self, user_goal: str, scope: Scope) -> str:
         validation_instructions = ""
@@ -408,6 +408,69 @@ class ContextManager:
     def _validate_requirements(self, requirements: List[str], user_goal: str, answer: str) -> DataBundle:
         prompt = self.prompts['validate_requirements'].format(user_goal=user_goal, 
                                                               answer=answer)
+        response = self.llm_call(prompt)
+        json_obj = self._parse_response(response)
+        feedback = self._retrieve_feedback(json_obj)
+        validation_instructions = self._retrieve_validation_instructions(json_obj)
+        data = DataBundle({"validation_instructions": validation_instructions}, feedback)
+        self._log(ValidationLog(prompt, response, feedback, data.data))
+        return data
+    
+    def _get_plan_creation(self, description: str, validation_instructions: str = "") -> Plan:
+        is_valid = False
+        while is_valid != True:
+            plan = self._create_plan_llm_call(description, validation_instructions)
+            data = self._validate_create_plan_llm_call(plan, description)
+            feedback = data.feedback_bundle.get_last_feedback()
+            validation_instructions = data['validation_instructions']
+            is_valid = feedback.success
+        return plan
+    
+    def _get_plan_update(self, description: str, feedback: Feedback, previous_plan: Plan, validation_instructions: str = "") -> Plan:
+        is_valid = False
+        while is_valid != True:
+            plan = self._update_plan_llm_call(description, 
+                                              feedback, 
+                                              previous_plan, 
+                                              validation_instructions)
+            data = self._validate_update_plan_llm_call(plan, description)
+            feedback = data.feedback_bundle.get_last_feedback()
+            validation_instructions = data['validation_instructions']
+            is_valid = feedback.success
+        return plan
+    
+    def _create_plan_llm_call(self, description: str, validation_instructions: str = "") -> Plan:
+        prompt = self.prompts['create_plan'].format(description=description,
+                                                    validation_instructions=validation_instructions)
+        response = self.llm_call(prompt)
+        json_obj = self._parse_response(response)
+        plan = self._retrieve_plan(json_obj)
+        self._log(PlanUpdateLog(prompt, response, None, plan))
+        return plan
+    
+    def _update_plan_llm_call(self, description: str, feedback: Feedback, previous_plan: Plan, validation_instructions: str = "") -> Plan:
+        prompt = self.prompts['update_plan'].format(description=description, 
+                                                    feedback=feedback,
+                                                    previous_plan=previous_plan,
+                                                    validation_instructions=validation_instructions)
+        response = self.llm_call(prompt)
+        json_obj = self._parse_response(response)
+        plan = self._retrieve_plan(json_obj)
+        self._log(PlanUpdateLog(prompt, response, previous_plan, plan))
+        return plan
+    
+    def _validate_create_plan_llm_call(self, plan: Plan, description: str) -> DataBundle:
+        prompt = self.prompts['validate_create_plan'].format(plan=plan, description=description)
+        response = self.llm_call(prompt)
+        json_obj = self._parse_response(response)
+        feedback = self._retrieve_feedback(json_obj)
+        validation_instructions = self._retrieve_validation_instructions(json_obj)
+        data = DataBundle({"validation_instructions": validation_instructions}, feedback)
+        self._log(ValidationLog(prompt, response, feedback, data.data))
+        return data
+    
+    def _validate_update_plan_llm_call(self, plan: Plan, description: str) -> DataBundle:
+        prompt = self.prompts['validate_update_plan'].format(plan=plan, description=description)
         response = self.llm_call(prompt)
         json_obj = self._parse_response(response)
         feedback = self._retrieve_feedback(json_obj)
