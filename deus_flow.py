@@ -38,8 +38,10 @@ def establish_scope_step(data: DataBundle) -> Feedback:
 def establish_scope_condition(data: DataBundle) -> WorkflowStep:
     workflow_feedback = data.feedback_bundle.get_last_feedback()
     if workflow_feedback.success:
+        print("Establish scope successful")
         return planning_workflow_step
     else:
+        print("Establish scope unsuccessful")
         return establish_scope_workflow_step
 
 def planning_step(data: DataBundle) -> Feedback:

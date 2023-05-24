@@ -40,7 +40,7 @@ class DataBundle:
     data: Dict
     feedback_bundle: FeedbackBundle
 
-    def __init__(self, data: Dict, feedback: Feedback|FeedbackBundle):
+    def __init__(self, data: Dict, feedback: Feedback|FeedbackBundle = None):
         self.data = data
         self.feedback_bundle = FeedbackBundle([feedback]) if isinstance(feedback, Feedback) else feedback
 

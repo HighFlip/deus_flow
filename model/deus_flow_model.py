@@ -181,7 +181,7 @@ class ContextManager:
         if context is not None:
             self.context = context
         elif user_query is not None:
-            user_goal = self._update_user_goal(user_query)
+            user_goal = self._get_user_goal(user_query)
             self.context = Context(Scope(user_query, user_goal))
         self.logger.add_context(self.context)
 
@@ -219,13 +219,14 @@ class ContextManager:
     def task_handler(self):
         active_step = self.context.current_step
         if active_step:
-            candidate_tools = self.get_candidate_tools(active_step)
-            relevant_tool, feedback_bundle = self.tool_selection(active_step, candidate_tools)
-            action = self.turn_to_action(active_step, relevant_tool, feedback_bundle)
-            self.execute(action, feedback_bundle)
-            active_step.feedback = feedback_bundle
-            self.context.data = feedback_bundle
-            if feedback_bundle.success:
+            data = DataBundle({'active_step': active_step}, FeedbackBundle())
+            self.get_candidate_tools(data)
+            self.tool_selection(data)
+            self.turn_to_action(data)
+            self.execute_action(data)
+            active_step.feedback = data.feedback_bundle
+            self.context.data = data
+            if data.feedback_bundle.success:
                 active_step.accomplished = True
                 if self.context.plan.check_accomplished():
                     self.context.finished = True
@@ -235,7 +236,7 @@ class ContextManager:
         self.context.current_feedback = feedback
         self.logger.logs[-1].feedback = feedback
 
-    def get_candidate_tools(self, step: Step) -> List[Tool]:
+    def get_candidate_tools(self, step: Step) -> DataBundle:
         #Semantic search to find potential tools
         pass
 
@@ -264,7 +265,7 @@ class ContextManager:
         else:
             return None
 
-    def execute(self, action: Action, feedback_bundle: FeedbackBundle):
+    def execute_action(self, action: Action, feedback_bundle: FeedbackBundle):
         if action:
             data = self.monitor(action.tool.func, action.tool_input)
             feedback = data.feedback_bundle.get_last_feedback()
@@ -334,17 +335,8 @@ class ContextManager:
         data = DataBundle({"validation_instructions": validation_instructions}, feedback)
         self._log(ValidationLog(prompt, response, feedback, data.data))
         return data
-    
-    def _update_user_goal(self, user_query: str) -> str:
-            user_goal = self._get_goal(user_query)
-            if user_goal:
-                self._log(GoalUpdateLog(None, user_goal))
-                return user_goal
-            else:
-                self._log(GoalUpdateLog(None, "Goal not found"))
-                return self._update_user_goal(user_query)
             
-    def _get_goal(self, user_query) -> str:
+    def _get_user_goal(self, user_query) -> str:
         # TODO: Set a limit on the number of times this can be called
         validation_instructions = ""
         is_valid = False
@@ -354,18 +346,24 @@ class ContextManager:
             feedback = data.feedback_bundle.get_last_feedback()
             validation_instructions = data['validation_instructions']
             is_valid = feedback.success
+        self._log(GoalUpdateLog(None, user_goal))
         return user_goal
     
-    def _retrieve_goal_llm_call(self, user_query:str, validation_instructions: str):
+    def _retrieve_goal_llm_call(self, user_query: str, validation_instructions: str = ""):
+        print(user_query)
         prompt = self.prompts['retrieve_goal'].format(user_query=user_query,
                                                       validation_instructions=validation_instructions)
         response = self.llm_call(prompt)
-        json_obj = self._parse_response(response)
-        if "user_goal" in json_obj:
-            user_goal = json_obj["user_goal"]
-        else:
-            user_goal = None
-        self._log(RetrievalLog(prompt, response, {"user_goal": user_goal}))
+        try:
+            json_obj = self._parse_response(response)
+            if "user_goal" in json_obj:
+                user_goal = json_obj["user_goal"]
+            else:
+                user_goal = None
+            self._log(RetrievalLog(prompt, response, {"user_goal": user_goal}))
+        except json.JSONDecodeError:
+            user_goal = response
+            self._log(RetrievalLog(prompt, response, {"user_goal": user_goal}))
         return user_goal
     
     def _validate_goal_llm_call(self, user_query: str, user_goal: str) -> DataBundle:
@@ -407,6 +405,7 @@ class ContextManager:
     
     def _validate_requirements(self, requirements: List[str], user_goal: str, answer: str) -> DataBundle:
         prompt = self.prompts['validate_requirements'].format(user_goal=user_goal, 
+                                                              requirements=requirements,
                                                               answer=answer)
         response = self.llm_call(prompt)
         json_obj = self._parse_response(response)
@@ -484,7 +483,7 @@ class ContextManager:
         if "feedback" in json_obj:
             feedback_dict = json_obj["feedback"]
             message = feedback_dict["message"]
-            success = True if feedback_dict["success"].lower() in ["true", "t", "success"] else False
+            success = feedback_dict["success"]
             feedback = Feedback(message, success=success)
             print(feedback)
         else:

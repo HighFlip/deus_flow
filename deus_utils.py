@@ -10,7 +10,7 @@ def llm_call(prompt: str, model: str = 'gpt-3.5-turbo'):
             {"role": "user", "content": prompt}
             ]
         response = openai.ChatCompletion.create(
-                            model=model, temperature=0, max_tokens=3700, messages=messages, stop="STOP")
+                            model=model, temperature=0, max_tokens=3200, messages=messages, stop="STOP")
         message = response['choices'][0]['message']['content']
         print("Response: " + message)
         return message
@@ -20,15 +20,15 @@ def llm_call(prompt: str, model: str = 'gpt-3.5-turbo'):
 
 def get_workflow_id():
     id_str = str(uuid.uuid4())
-    return "1" + id_str[:4] + "-" + id_str[4:9]
+    return "1" + id_str[:4] + "-" + id_str[4:8]
 
 def get_workflow_step_id():
     id_str = str(uuid.uuid4())
-    return "2" + id_str[:4] + "-" + id_str[4:9]
+    return "2" + id_str[:4] + "-" + id_str[4:8]
 
 def get_step_id():
     id_str = str(uuid.uuid4())
-    return "3" + id_str[:4] + "-" + id_str[4:9]
+    return "3" + id_str[:4] + "-" + id_str[4:8]
 
 def get_action_id(step_id: str):
     return "4" + step_id[1:5] + "-" + str(uuid.uuid4())[:4]
