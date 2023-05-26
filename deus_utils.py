@@ -1,6 +1,10 @@
 import openai
-from prefect import task
 import uuid
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 def llm_call(prompt: str, model: str = 'gpt-3.5-turbo'):
     try:
@@ -15,7 +19,7 @@ def llm_call(prompt: str, model: str = 'gpt-3.5-turbo'):
         print("Response: " + message)
         return message
     except Exception as e:
-        print(e)
+        print("Error: "+ str(e))
         return None
 
 def get_workflow_id():

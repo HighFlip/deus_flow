@@ -9,7 +9,10 @@ class Feedback:
         self.success = success
     
     def copy(self):
-        return Feedback(self.message, self.success)   
+        return Feedback(self.message, self.success)
+
+    def __str__(self):
+        return self.message   
     
 class FeedbackBundle:
     bundle: List[Feedback]
@@ -35,6 +38,9 @@ class FeedbackBundle:
     
     def get_last_feedback(self):
         return self.bundle[-1]
+    
+    def __str__(self):
+        return self.summary if self.summary is not None else "\n".join([str(feedback) for feedback in self.bundle])
     
 class DataBundle:
     data: Dict

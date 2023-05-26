@@ -7,7 +7,7 @@ from typing import Dict, List, Tuple, Callable
 from deus_utils import llm_call
 from deus_prompts import prompts
 
-from model.information_model import Scope, Tool, Action, Step, Plan
+from model.information_model import Scope, Tool, Action, Step, Plan, Requirements
 from model.feedback_model import Feedback, FeedbackBundle, DataBundle
 from model.log_model import Log
 
@@ -58,9 +58,9 @@ class RetrievalLog(LLMLog):
 class RefinementLog(LLMLog):
     question: str
     answer: str
-    requirements: List[str]
+    requirements: Requirements
 
-    def __init__(self, prompt: str, question: str, answer: str, requirements: List[str], feedback: Feedback|FeedbackBundle = None):
+    def __init__(self, prompt: str, question: str, answer: str, requirements: Requirements, feedback: Feedback|FeedbackBundle = None):
         super().__init__(prompt, question, "refinement", feedback=feedback)
         self.question = question
         self.answer = answer
@@ -132,9 +132,6 @@ class Logger:
     def add_context(self, context: Context):
         self.logs[-1].context = context
 
-    def get_questions_answers(self) -> List[str]:
-        return "\n".join("\n".join([log.question, log.answer]) for log in self.logs[0] if isinstance(log, RefinementLog))
-
     def clear_logs(self):
         self.logs = []
 
@@ -185,25 +182,103 @@ class ContextManager:
             self.context = Context(Scope(user_query, user_goal))
         self.logger.add_context(self.context)
 
-    def ask_user_llm_call(self):
-        prompt = self.prompts['ask_user'].format(user_query=self.context.scope.user_query)
-        questions = self.llm_call(prompt)
-        user_answer = input(questions)
-        self._add_requirements(prompt, questions, user_answer)
+    def set_scope(self):
+        validation_instructions = ""
+        stop = False
+        requirements = None
+        while (stop != True):
+            if requirements is None:
+                requirements = self._first_ask_user_llm_call()
+            else:
+                new_requirements = self._next_ask_user_llm_call(requirements, validation_instructions)
+                requirements = self._merge_requirements(requirements, new_requirements)
+            data = self.validate_scope_completeness_llm_call(requirements)
+            feedback = data.feedback_bundle.get_last_feedback()
+            validation_instructions = data['validation_instructions']
+            stop = feedback.success
+        self.context.scope.set_requirements(requirements)
+        self.context.scope.description = self._get_scope_description(self.context.scope.user_goal, requirements)
 
-    def _add_requirements(self, prompt: str, questions: str, answer: str):
-        requirements = self._update_requirements(answer)
-        self.context.scope.add_requirements(requirements)
-        self._log(RefinementLog(prompt, questions, answer, requirements))
+    def _first_ask_user_llm_call(self) -> Requirements:
+        prompt = self.prompts['first_ask_user'].format(user_query=self.context.scope.user_goal)
+        questions = self.llm_call(prompt)
+        user_answer = input(questions + '\nType your answer here: ')
+        requirements = self._get_requirements(questions, user_answer)
+        self._log(RefinementLog(prompt, questions, user_answer, requirements))
+        return requirements
     
-    def validate_scope(self) -> bool:
-        feedback = self._validate_scope_llm_call(self.context.scope.user_goal, 
-                                                 self.logger.get_questions_answers(), self.context.scope, "")
-        if feedback.success:
-            self.context.scope.description = self._get_scope_description(self.context.scope.user_goal, self.context.scope)
-            return True
+    def _next_ask_user_llm_call(self, requirements: Requirements, validation_instructions: str) -> Requirements:
+        prompt = self.prompts['next_ask_user'].format(user_goal=self.context.scope.user_goal,
+                                                      requirements=requirements,
+                                                      validation_instructions=validation_instructions)
+        questions = self.llm_call(prompt)
+        user_answer = input(questions + '\nType your answer here: ')
+        requirements = self._get_requirements(questions, user_answer)
+        self._log(RefinementLog(prompt, questions, user_answer, requirements))
+        return requirements    
+
+    def _get_requirements(self, questions: str, answer: str) -> Requirements:
+        validation_instructions = ""
+        stop = False
+        user_goal = self.context.scope.user_goal
+        while (stop != True):
+            requirements = self._retrieve_requirements_llm_call(user_goal, questions, answer, validation_instructions)
+            data = self._validate_requirements_retrieved(requirements, user_goal, answer)
+            feedback = data.feedback_bundle.get_last_feedback()
+            validation_instructions = data['validation_instructions']
+            stop = feedback.success
+        return requirements
+    
+    def _retrieve_requirements_llm_call(self, questions: str, user_goal: str, answer: str, validation_instructions: str):
+        prompt = self.prompts['retrieve_requirements'].format(user_goal=user_goal,
+                                                              questions=questions, 
+                                                              answer=answer,
+                                                              validation_instructions=validation_instructions)
+        response = self.llm_call(prompt)
+        json_obj = self._parse_response(response)
+        if "requirements" in json_obj:
+            requirements = Requirements(json_obj["requirements"])
+            # print(requirements)
         else:
-            return False
+            requirements = None
+        self._log(RetrievalLog(prompt, response, {"requirements": requirements})) 
+        return requirements
+    
+    def _validate_requirements_retrieved(self, requirements: Requirements, user_goal: str, questions: str, answer: str) -> DataBundle:
+        prompt = self.prompts['validate_requirements_retrieved'].format(user_goal=user_goal,
+                                                                        questions=questions, 
+                                                                        answer=answer,
+                                                                        requirements=requirements)
+        response = self.llm_call(prompt)
+        json_obj = self._parse_response(response)
+        feedback = self._retrieve_feedback(json_obj)
+        validation_instructions = self._retrieve_validation_instructions(json_obj)
+        data = DataBundle({"validation_instructions": validation_instructions}, feedback)
+        self._log(ValidationLog(prompt, response, feedback, data.data))
+        return data
+    
+    def _merge_requirements(self, requirements: Requirements, new_requirements: Requirements) -> Requirements:
+        validation_instructions = ""
+        stop = False
+        while (stop != True):
+            merged_requirements = self._merge_requirements_llm_call(requirements, new_requirements, validation_instructions)
+            data = self._validate_requirements_merged(merged_requirements, requirements, new_requirements)
+            feedback = data.feedback_bundle.get_last_feedback()
+            validation_instructions = data['validation_instructions']
+            stop = feedback.success
+        return merged_requirements
+
+    
+    def validate_scope_completeness_llm_call(self, requirements: Requirements) -> DataBundle:
+        prompt = self.prompts['validate_scope_completeness'].format(user_goal=self.context.scope.user_goal, 
+                                                                    requirements=requirements)
+        response = self.llm_call(prompt)
+        json_obj = self._parse_response(response)
+        feedback = self._retrieve_feedback(json_obj)
+        data = DataBundle({"validation_instructions": self._retrieve_validation_instructions(json_obj)}, feedback)
+        self._log(ValidationLog(prompt, response, feedback, data.data))
+        return data
+        
 
     def planner(self):
         previous_plan = self.context.plan
@@ -286,6 +361,12 @@ class ContextManager:
         try:
             # Remove leading/trailing whitespace and newlines
             response = response.strip()
+            # Find the JSON object delimited by {}
+            start_index = response.find("{")
+            end_index = response.rfind("}")
+            if start_index == -1 or end_index == -1:
+                raise ValueError("No JSON object found in the response")
+            response = response[start_index:end_index + 1]
             # Try parsing JSON from response as single line
             json_obj = json.loads(response)
         except json.JSONDecodeError:
@@ -297,36 +378,27 @@ class ContextManager:
                 # handle the error or exit the program
         return json_obj
     
-    def _validate_scope_llm_call(self, user_goal: str, history: List[str], scope: Scope) -> Feedback:
-        prompt = self.prompts['validate_scope'].format(user_goal=user_goal, 
-                                                       history=history,
-                                                       scope=scope)
-        response = self.llm_call(prompt)
-        json_obj = self._parse_response(response)
-        feedback = self._retrieve_feedback(json_obj)
-        return feedback
-    
-    def _get_scope_description(self, user_goal: str, scope: Scope) -> str:
+    def _get_scope_description(self, user_goal: str, requirements: Requirements) -> str:
         validation_instructions = ""
-        is_valid = False
-        while is_valid != True:
-            description = self._describe_scope_llm_call(user_goal, scope, validation_instructions)
-            data = self._validate_scope_description_llm_call(user_goal, scope, description)
+        stop = False
+        while stop != True:
+            description = self._describe_scope_llm_call(user_goal, requirements, validation_instructions)
+            data = self._validate_scope_description_llm_call(user_goal, requirements, description)
             feedback = data.feedback_bundle.get_last_feedback()
             validation_instructions = data['validation_instructions']
-            is_valid = feedback.success
+            stop = feedback.success
 
-    def _describe_scope_llm_call(self, user_goal: str, scope: Scope, validation_instructions: str) -> str:
+    def _describe_scope_llm_call(self, user_goal: str, requirements: Requirements, validation_instructions: str) -> str:
         prompt = self.prompts['describe_scope'].format(user_goal=user_goal, 
-                                                       scope=scope,
+                                                       requirements=requirements,
                                                        validation_instructions=validation_instructions)
         response = self.llm_call(prompt)
-        self._log(LLMLog(prompt, response, 'describe_scope'))
+        self._log(LLMLog(prompt, response, 'describe_scope')) # Add log class for this
         return response
     
-    def _validate_scope_description_llm_call(self, user_goal: str, scope: Scope, description: str):
+    def _validate_scope_description_llm_call(self, user_goal: str, requirements: Requirements, description: str):
         prompt = self.prompts['validate_scope_description'].format(user_goal=user_goal, 
-                                                                   scope=scope, 
+                                                                   requirements=requirements, 
                                                                    description=description)
         response = self.llm_call(prompt)
         json_obj = self._parse_response(response)
@@ -339,13 +411,13 @@ class ContextManager:
     def _get_user_goal(self, user_query) -> str:
         # TODO: Set a limit on the number of times this can be called
         validation_instructions = ""
-        is_valid = False
-        while is_valid != True:
+        stop = False
+        while stop != True:
             user_goal = self._retrieve_goal_llm_call(user_query, validation_instructions)
             data = self._validate_goal_llm_call(user_query, user_goal)
             feedback = data.feedback_bundle.get_last_feedback()
             validation_instructions = data['validation_instructions']
-            is_valid = feedback.success
+            stop = feedback.success
         self._log(GoalUpdateLog(None, user_goal))
         return user_goal
     
@@ -376,58 +448,20 @@ class ContextManager:
         data = DataBundle({"validation_instructions": validation_instructions}, feedback)
         self._log(ValidationLog(prompt, response, feedback, data.data))
         return data
-             
-    def _update_requirements(self, answer: str) -> List[str]:
-        validation_instructions = ""
-        is_valid = False
-        user_goal = self.context.scope.user_goal
-        while is_valid != True:
-            requirements = self._retrieve_requirements_llm_call(user_goal, answer, validation_instructions)
-            data = self._validate_requirements(requirements, user_goal, answer)
-            feedback = data.feedback_bundle.get_last_feedback()
-            validation_instructions = data['validation_instructions']
-            is_valid = feedback.success
-        return requirements
-    
-    def _retrieve_requirements_llm_call(self, user_goal: str, answer: str, validation_instructions: str):
-        prompt = self.prompts['retrieve_requirements'].format(user_goal=user_goal, 
-                                                              answer=answer,
-                                                              validation_instructions=validation_instructions)
-        response = self.llm_call(prompt)
-        json_obj = self._parse_response(response)
-        if "requirements" in json_obj:
-            requirements = json_obj["requirements"]
-            # print(requirements)
-        else:
-            requirements = None
-        self._log(RetrievalLog(prompt, response, {"requirements": requirements})) 
-        return requirements
-    
-    def _validate_requirements(self, requirements: List[str], user_goal: str, answer: str) -> DataBundle:
-        prompt = self.prompts['validate_requirements'].format(user_goal=user_goal, 
-                                                              requirements=requirements,
-                                                              answer=answer)
-        response = self.llm_call(prompt)
-        json_obj = self._parse_response(response)
-        feedback = self._retrieve_feedback(json_obj)
-        validation_instructions = self._retrieve_validation_instructions(json_obj)
-        data = DataBundle({"validation_instructions": validation_instructions}, feedback)
-        self._log(ValidationLog(prompt, response, feedback, data.data))
-        return data
     
     def _get_plan_creation(self, description: str, validation_instructions: str = "") -> Plan:
-        is_valid = False
-        while is_valid != True:
+        stop = False
+        while stop != True:
             plan = self._create_plan_llm_call(description, validation_instructions)
             data = self._validate_create_plan_llm_call(plan, description)
             feedback = data.feedback_bundle.get_last_feedback()
             validation_instructions = data['validation_instructions']
-            is_valid = feedback.success
+            stop = feedback.success
         return plan
     
     def _get_plan_update(self, description: str, feedback: Feedback, previous_plan: Plan, validation_instructions: str = "") -> Plan:
-        is_valid = False
-        while is_valid != True:
+        stop = False
+        while stop != True:
             plan = self._update_plan_llm_call(description, 
                                               feedback, 
                                               previous_plan, 
@@ -435,7 +469,7 @@ class ContextManager:
             data = self._validate_update_plan_llm_call(plan, description)
             feedback = data.feedback_bundle.get_last_feedback()
             validation_instructions = data['validation_instructions']
-            is_valid = feedback.success
+            stop = feedback.success
         return plan
     
     def _create_plan_llm_call(self, description: str, validation_instructions: str = "") -> Plan:

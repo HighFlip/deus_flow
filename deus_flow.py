@@ -12,13 +12,8 @@ import traceback
 
 def establish_scope(user_query: str) -> ContextManager:
     context_manager = ContextManager(user_query)
-    ask_user_flow(context_manager)
+    context_manager.set_scope()
     return context_manager
-
-def ask_user_flow(context_manager: ContextManager):
-    context_manager.ask_user_llm_call()
-    while (context_manager.validate_scope()!=True):
-        context_manager.ask_user_llm_call()
 
 # @flow(log_prints=True)
 # def core_loop(context_manager: ContextManager):

@@ -9,17 +9,17 @@ from deus_utils import get_step_id, get_action_id
 class Scope:
     user_query: str
     user_goal: str
-    requirements: List[str]
+    requirements: Requirements
     description: str
 
-    def __init__(self, user_query: str, user_goal: str, requirements: List[str] = [], description: str = None):
+    def __init__(self, user_query: str, user_goal: str, requirements: Requirements = None, description: str = None):
         self.user_query = user_query
         self.user_goal = user_goal
         self.requirements = requirements
         self.description = description
 
-    def add_requirements(self, requirements: List[str]):
-        self.requirements.extend(requirements)
+    def set_requirements(self, requirements: Requirements):
+        self.requirements = requirements
 
     def copy(self):
         return Scope(self.user_query, self.user_goal, self.requirements.copy(), self.description)
@@ -110,3 +110,18 @@ class Plan:
 
     def copy(self):
         return Plan(copy.deepcopy(self.steps))
+    
+class Requirements:
+    requirements: List[str]
+
+    def __init__(self, requirements: List[str]):
+        self.requirements = requirements
+
+    def copy(self):
+        return Requirements(self.requirements.copy())
+    
+    def update(self, requirements: List[str]):
+        self.requirements = requirements
+    
+    def __str__(self):
+        return str(self.requirements)

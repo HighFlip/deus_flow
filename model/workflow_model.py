@@ -38,7 +38,7 @@ class WorkflowExecutor:
 
     def execute_workflow(self, workflow: Workflow, data: DataBundle) -> FeedbackBundle:
         self.current_step = step = workflow.steps[0]
-        while True:
+        while step is not None:
             feedback = self.execute_step(step, data)
             data.feedback_bundle.append(feedback)
             self.current_step = step = self.compute_next_step(step, data)
