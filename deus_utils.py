@@ -4,7 +4,9 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
+api_key = os.getenv("OPENAI_API_KEY")
+print("API key: " + api_key)
+openai.api_key = api_key
 
 def llm_call(prompt: str, model: str = 'gpt-3.5-turbo'):
     try:
