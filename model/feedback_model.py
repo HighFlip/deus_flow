@@ -56,3 +56,7 @@ class DataBundle:
         except KeyError:
             return None
         
+    def __setitem__(self, key, value):
+        self.data[key] = value
+
+        

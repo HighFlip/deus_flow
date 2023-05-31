@@ -309,11 +309,42 @@ class ContextManager:
         data = DataBundle({"validation_instructions": self._retrieve_validation_instructions(json_obj)}, feedback)
         self._log(ValidationLog(prompt, response, feedback, data.data))
         return data
+    
+    def _get_scope_description(self, user_goal: str, requirements: Requirements) -> str:
+        validation_instructions = ""
+        stop = False
+        while stop != True:
+            description = self._describe_scope_llm_call(user_goal, requirements, validation_instructions)
+            data = self._validate_scope_description_llm_call(user_goal, requirements, description)
+            feedback = data.feedback_bundle.get_last_feedback()
+            validation_instructions = data['validation_instructions']
+            stop = feedback.success
+        return description
+
+    def _describe_scope_llm_call(self, user_goal: str, requirements: Requirements, validation_instructions: str) -> str:
+        prompt = self.prompts['describe_scope'].format(user_goal=user_goal, 
+                                                       requirements=requirements,
+                                                       validation_instructions=validation_instructions)
+        response = self.llm_call(prompt)
+        self._log(LLMLog(prompt, response, 'describe_scope')) # Add log class for this
+        return response
+    
+    def _validate_scope_description_llm_call(self, user_goal: str, requirements: Requirements, description: str):
+        prompt = self.prompts['validate_scope_description'].format(user_goal=user_goal, 
+                                                                   requirements=requirements, 
+                                                                   description=description)
+        response = self.llm_call(prompt)
+        json_obj = self._parse_response(response)
+        feedback = self._retrieve_feedback(json_obj)
+        validation_instructions = self._retrieve_validation_instructions(json_obj)
+        data = DataBundle({"validation_instructions": validation_instructions}, feedback)
+        self._log(ValidationLog(prompt, response, feedback, data.data))
+        return data
         
     def planner(self):
         previous_plan = self.context.plan
         if previous_plan is None:
-            plan = self._create_plan_llm_call(self.context.scope.description)
+            plan = self._get_plan_creation(self.context.scope.description)
         else:
             plan = self._get_plan_update(self.context.scope.description, 
                                          self.context.current_feedback, 
@@ -321,6 +352,70 @@ class ContextManager:
         self.context.plan = plan
         self.context.current_step = plan.get_current_step()
     
+    def _get_plan_creation(self, description: str) -> Plan:
+        validation_instructions = ""
+        stop = False
+        while stop != True:
+            plan = self._create_plan_llm_call(description, validation_instructions)
+            data = self._validate_create_plan_llm_call(plan, description)
+            feedback = data.feedback_bundle.get_last_feedback()
+            validation_instructions = data['validation_instructions']
+            stop = feedback.success
+        return plan
+    
+    def _create_plan_llm_call(self, description: str, validation_instructions: str = "") -> Plan:
+        prompt = self.prompts['create_plan'].format(description=description,
+                                                    validation_instructions=validation_instructions)
+        response = self.llm_call(prompt)
+        json_obj = self._parse_response(response)
+        plan = self._retrieve_plan(json_obj)
+        self._log(PlanUpdateLog(prompt, response, None, plan))
+        return plan
+    
+    def _validate_create_plan_llm_call(self, plan: Plan, description: str) -> DataBundle:
+        prompt = self.prompts['validate_create_plan'].format(plan=plan, description=description)
+        response = self.llm_call(prompt)
+        json_obj = self._parse_response(response)
+        feedback = self._retrieve_feedback(json_obj)
+        validation_instructions = self._retrieve_validation_instructions(json_obj)
+        data = DataBundle({"validation_instructions": validation_instructions}, feedback)
+        self._log(ValidationLog(prompt, response, feedback, data.data))
+        return data
+    
+    def _get_plan_update(self, description: str, feedback: Feedback, previous_plan: Plan, validation_instructions: str = "") -> Plan:
+        stop = False
+        while stop != True:
+            plan = self._update_plan_llm_call(description, 
+                                              feedback, 
+                                              previous_plan, 
+                                              validation_instructions)
+            data = self._validate_update_plan_llm_call(plan, description)
+            feedback = data.feedback_bundle.get_last_feedback()
+            validation_instructions = data['validation_instructions']
+            stop = feedback.success
+        return plan
+    
+    def _update_plan_llm_call(self, description: str, feedback: Feedback, previous_plan: Plan, validation_instructions: str = "") -> Plan:
+        prompt = self.prompts['update_plan'].format(description=description, 
+                                                    feedback=feedback,
+                                                    previous_plan=previous_plan,
+                                                    validation_instructions=validation_instructions)
+        response = self.llm_call(prompt)
+        json_obj = self._parse_response(response)
+        plan = self._retrieve_plan(json_obj)
+        self._log(PlanUpdateLog(prompt, response, previous_plan, plan))
+        return plan
+
+    def _validate_update_plan_llm_call(self, plan: Plan, description: str) -> DataBundle:
+        prompt = self.prompts['validate_update_plan'].format(plan=plan, description=description)
+        response = self.llm_call(prompt)
+        json_obj = self._parse_response(response)
+        feedback = self._retrieve_feedback(json_obj)
+        validation_instructions = self._retrieve_validation_instructions(json_obj)
+        data = DataBundle({"validation_instructions": validation_instructions}, feedback)
+        self._log(ValidationLog(prompt, response, feedback, data.data))
+        return data
+
     def task_handler(self):
         active_step = self.context.current_step
         if active_step:
@@ -407,36 +502,6 @@ class ContextManager:
                 print(f"Error parsing JSON: {str(e)}")
                 # handle the error or exit the program
         return json_obj
-    
-    def _get_scope_description(self, user_goal: str, requirements: Requirements) -> str:
-        validation_instructions = ""
-        stop = False
-        while stop != True:
-            description = self._describe_scope_llm_call(user_goal, requirements, validation_instructions)
-            data = self._validate_scope_description_llm_call(user_goal, requirements, description)
-            feedback = data.feedback_bundle.get_last_feedback()
-            validation_instructions = data['validation_instructions']
-            stop = feedback.success
-
-    def _describe_scope_llm_call(self, user_goal: str, requirements: Requirements, validation_instructions: str) -> str:
-        prompt = self.prompts['describe_scope'].format(user_goal=user_goal, 
-                                                       requirements=requirements,
-                                                       validation_instructions=validation_instructions)
-        response = self.llm_call(prompt)
-        self._log(LLMLog(prompt, response, 'describe_scope')) # Add log class for this
-        return response
-    
-    def _validate_scope_description_llm_call(self, user_goal: str, requirements: Requirements, description: str):
-        prompt = self.prompts['validate_scope_description'].format(user_goal=user_goal, 
-                                                                   requirements=requirements, 
-                                                                   description=description)
-        response = self.llm_call(prompt)
-        json_obj = self._parse_response(response)
-        feedback = self._retrieve_feedback(json_obj)
-        validation_instructions = self._retrieve_validation_instructions(json_obj)
-        data = DataBundle({"validation_instructions": validation_instructions}, feedback)
-        self._log(ValidationLog(prompt, response, feedback, data.data))
-        return data
             
     def _get_user_goal(self, user_query) -> str:
         # TODO: Set a limit on the number of times this can be called
@@ -479,69 +544,6 @@ class ContextManager:
         self._log(ValidationLog(prompt, response, feedback, data.data))
         return data
     
-    def _get_plan_creation(self, description: str, validation_instructions: str = "") -> Plan:
-        stop = False
-        while stop != True:
-            plan = self._create_plan_llm_call(description, validation_instructions)
-            data = self._validate_create_plan_llm_call(plan, description)
-            feedback = data.feedback_bundle.get_last_feedback()
-            validation_instructions = data['validation_instructions']
-            stop = feedback.success
-        return plan
-    
-    def _get_plan_update(self, description: str, feedback: Feedback, previous_plan: Plan, validation_instructions: str = "") -> Plan:
-        stop = False
-        while stop != True:
-            plan = self._update_plan_llm_call(description, 
-                                              feedback, 
-                                              previous_plan, 
-                                              validation_instructions)
-            data = self._validate_update_plan_llm_call(plan, description)
-            feedback = data.feedback_bundle.get_last_feedback()
-            validation_instructions = data['validation_instructions']
-            stop = feedback.success
-        return plan
-    
-    def _create_plan_llm_call(self, description: str, validation_instructions: str = "") -> Plan:
-        prompt = self.prompts['create_plan'].format(description=description,
-                                                    validation_instructions=validation_instructions)
-        response = self.llm_call(prompt)
-        json_obj = self._parse_response(response)
-        plan = self._retrieve_plan(json_obj)
-        self._log(PlanUpdateLog(prompt, response, None, plan))
-        return plan
-    
-    def _update_plan_llm_call(self, description: str, feedback: Feedback, previous_plan: Plan, validation_instructions: str = "") -> Plan:
-        prompt = self.prompts['update_plan'].format(description=description, 
-                                                    feedback=feedback,
-                                                    previous_plan=previous_plan,
-                                                    validation_instructions=validation_instructions)
-        response = self.llm_call(prompt)
-        json_obj = self._parse_response(response)
-        plan = self._retrieve_plan(json_obj)
-        self._log(PlanUpdateLog(prompt, response, previous_plan, plan))
-        return plan
-    
-    def _validate_create_plan_llm_call(self, plan: Plan, description: str) -> DataBundle:
-        prompt = self.prompts['validate_create_plan'].format(plan=plan, description=description)
-        response = self.llm_call(prompt)
-        json_obj = self._parse_response(response)
-        feedback = self._retrieve_feedback(json_obj)
-        validation_instructions = self._retrieve_validation_instructions(json_obj)
-        data = DataBundle({"validation_instructions": validation_instructions}, feedback)
-        self._log(ValidationLog(prompt, response, feedback, data.data))
-        return data
-    
-    def _validate_update_plan_llm_call(self, plan: Plan, description: str) -> DataBundle:
-        prompt = self.prompts['validate_update_plan'].format(plan=plan, description=description)
-        response = self.llm_call(prompt)
-        json_obj = self._parse_response(response)
-        feedback = self._retrieve_feedback(json_obj)
-        validation_instructions = self._retrieve_validation_instructions(json_obj)
-        data = DataBundle({"validation_instructions": validation_instructions}, feedback)
-        self._log(ValidationLog(prompt, response, feedback, data.data))
-        return data
-
     def _retrieve_feedback(self, json_obj: Dict[str, str]) -> Feedback:
         # retrieve the feedback from the JSON object
         if "feedback" in json_obj:

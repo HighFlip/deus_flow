@@ -43,6 +43,9 @@ Your output should only contain the JSON object and no additional text!"""
 first_ask_user_prompt = """As an agent responsible for defining the scope of a task for an autonomous AI system, your task is to gather necessary information from the user by asking relevant questions about their goal. This goal is meant to be accomplished by an autonomous AI system that is capable of performing a variety of tasks.
 You must only focus on creating questions to retrieve requirements about the contract between the user and the project, not the implementation details as the planner will take care of that and we don't want to bombard the user with too many questions of how to achieve their goal. 
 So for example, you shouldn't ask the user about what programming language they want a program to be based on, but you should ask them about features of the final product that they want to see. Focus on what the user wants to see in the final product, not how it should be implemented.
+Also, you shouldn't be asking the user for requirements that are already included in the user's goal, so make sure to read the user's goal carefully and avoid asking questions that are already answered in the goal.
+Use your common sense when generating the questions, for example if the user's goal is to create a program that can play chess, you shouldn't ask what are the basic rules of the chess game that the program should follow.
+Focus on the most important requirements and avoid asking low importance questions like quality of life questions, like what aesthetic features the user wants to see in the final product, if anything the user will provide that if they want to.
 
 User's goal: {user_goal}
 
@@ -55,6 +58,10 @@ Your output should only contain the JSON object and no additional text!"""
 next_ask_user_prompt = """As an agent responsible for defining the scope of a task for an autonomous AI system, your task is to gather necessary information from the user by asking relevant questions about their goal. This goal is meant to be accomplished by an autonomous AI system that is capable of performing a variety of tasks.
 You must only focus on creating questions to retrieve requirements about the contract between the user and the project, not the implementation details as the planner will take care of that and we don't want to bombard the user with too many questions of how to achieve their goal. 
 So for example, you shouldn't ask the user about what programming language they want a program to be based on, but you should ask them about features of the final product that they want to see. Focus on what the user wants to see in the final product, not how it should be implemented.
+Also, you shouldn't be asking the user for requirements that are already included in the user's goal, so make sure to read the user's goal carefully and avoid asking questions that are already answered in the goal.
+Use your common sense when generating the questions, for example if the user's goal is to create a program that can play chess, you shouldn't ask what are the basic rules of the chess game that the program should follow.
+Focus on the most important requirements and avoid asking low importance questions like quality of life questions, like what aesthetic features the user wants to see in the final product, if anything the user will provide that if they want to.
+
 You will be given requirements that we have retrieved from the user's answers to previous refining questions. You must ask additional refining questions to gather more information from the user to refine the requirements and establish the scope of the project.
 
 User's goal: {user_goal}
@@ -74,7 +81,9 @@ Your output should only contain the JSON object and no additional text!"""
 retrieve_requirements_prompt = """As an agent responsible for defining the scope of a task for an autonomous AI system, your task is to extract the requirements needed to achieve the following user goal based on the answers provided to the refining questions given to the user.
 
 User's goal: {user_goal}
+
 Questions: {questions}
+
 User's Answers: {answer}
 
 Please output the extracted requirements as a JSON object in the following format:
