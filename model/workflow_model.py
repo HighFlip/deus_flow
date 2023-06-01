@@ -6,7 +6,6 @@ from typing import List, Dict, Tuple, Callable, Optional
 from model.feedback_model import Feedback, FeedbackBundle, DataBundle
 from deus_utils import get_workflow_id, get_workflow_step_id
 
-
 class WorkflowStep:
     id: str
     name: str

@@ -25,7 +25,7 @@ class Scope:
         return Scope(self.user_query, self.user_goal, self.requirements.copy(), self.description)
 
     def __str__(self):
-        return f"User's query = {self.user_query}\nGoal = {self.user_goal}\nRequirements = {self.requirements}"
+        return f"User's query = {self.user_query}\nGoal = {self.user_goal}\nRequirements = {self.requirements}\nDescription = {self.description}"
 
 class Step:
     id: str
@@ -48,16 +48,15 @@ class Step:
         self.id = get_step_id()
         self.name = name
         self.goal = goal
-        self.tools = tools
-        self.blocked_by = blocked_by
-        self.blocking = blocking
         self.action = action
         self.feedback = feedback
         self.accomplished = accomplished
     
     def copy(self):
         return Step(self.id, self.tools.copy(), self.goal, self.action, self.feedback, self.accomplished)
-
+    
+    def __str__(self) -> str:
+        return f"Step: {self.name}\nGoal: {self.goal}\nAction: {self.action}\nFeedback: {self.feedback}\nAccomplished: {self.accomplished}"
 
 class Tool:
     id: int

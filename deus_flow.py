@@ -28,7 +28,7 @@ def establish_scope_step(data: DataBundle) -> Feedback:
         return Feedback(success=True, message="Scope established")
     except Exception as e:
         print(traceback.format_exc(e))
-        return Feedback(success=False, message="Scope not established: " + str(e))
+        return Feedback(success=False, message="Scope not established: " + traceback.format_exc(e))
 
 def establish_scope_condition(data: DataBundle) -> WorkflowStep:
     workflow_feedback = data.feedback_bundle.get_last_feedback()
@@ -45,7 +45,7 @@ def planning_step(data: DataBundle) -> Feedback:
         context_manager.planner()
         return Feedback(success=True, message="Planning successful")
     except Exception as e:
-        return Feedback(success=False, message="Planning unsuccessful: " + str(e))
+        return Feedback(success=False, message="Planning unsuccessful: " + traceback.format_exc(e))
     
 def planning_condition(data: DataBundle) -> WorkflowStep:
     workflow_feedback = data.feedback_bundle.get_last_feedback()
@@ -61,7 +61,7 @@ def task_handling_step(data: DataBundle) -> Feedback:
         context_manager.add_iteration()
         return Feedback(success=True, message="Task handling successful")
     except Exception as e:
-        return Feedback(success=False, message="Task handling unsuccessful: " + str(e))
+        return Feedback(success=False, message="Task handling unsuccessful: " + traceback.format_exc(e))
     
 def task_handling_condition(data: DataBundle) -> WorkflowStep:
     context_manager = data['context_manager']

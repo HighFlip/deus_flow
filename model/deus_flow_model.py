@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import logging
 import copy
 import json
 from typing import Dict, List, Tuple, Callable
@@ -18,6 +20,9 @@ class CandidateToolsLog(Log):
         super().__init__(feedback=feedback)
         self.candidate_tools = candidate_tools
 
+    def __str__(self):
+        return f"CandidateToolsLog: {self.timestamp}: \nCandidate tools = {self.candidate_tools}, Feedback = {self.feedback}"
+
 class ExecutionLog(Log):
     action: Action
     data: DataBundle
@@ -26,6 +31,9 @@ class ExecutionLog(Log):
         super().__init__(feedback=feedback)
         self.action = action
         self.data = data
+
+    def __str__(self):
+        return f"ExecutionLog: {self.timestamp}: \nAction = {self.action}, Data = {self.data}, Feedback = {self.feedback}"
     
 class LLMLog(Log):
     prompt: str
@@ -39,7 +47,7 @@ class LLMLog(Log):
         self.role = role
     
     def __str__(self):
-        return f"{self.timestamp}: \nPrompt = {self.prompt},\nResponse = {self.response}\nFeedback = {self.feedback}"
+        return f"LLMLog: {self.timestamp}: \nPrompt = {self.prompt},\nResponse = {self.response}\nFeedback = {self.feedback}"
 
 class ValidationLog(LLMLog):
     validation_instructions: str
@@ -48,12 +56,18 @@ class ValidationLog(LLMLog):
         super().__init__(prompt, response, 'validation', feedback=feedback)
         self.validation_instructions = validation_instructions
 
+    def __str__(self):
+        return f"ValidationLog: {self.timestamp}: \nPrompt = {self.prompt},\nResponse = {self.response}\nFeedback = {self.feedback}"
+
 class RetrievalLog(LLMLog):
     data: Dict
 
     def __init__(self, prompt: str, response: str, data: Dict):
         super().__init__(prompt, response, 'retrieval')
         self.data = data
+
+    def __str__(self):
+        return f"RetrievalLog: {self.timestamp}: \nPrompt = {self.prompt},\nResponse = {self.response}\nData = {self.data}"
 
 class RefinementLog(LLMLog):
     question: str
@@ -67,7 +81,7 @@ class RefinementLog(LLMLog):
         self.requirements = requirements
     
     def __str__(self):
-        return f"{self.timestamp}: \nQuestion = {self.question},\nAnswer = {self.answer}"
+        return f"RefinementLog: {self.timestamp}: \nQuestion = {self.question},\nAnswer = {self.answer}"
     
 class GoalUpdateLog(Log):
     previous_goal: str
@@ -79,7 +93,7 @@ class GoalUpdateLog(Log):
         self.goal = goal
     
     def __str__(self):
-        return f"{self.timestamp}: new_goal = {self.goal}"
+        return f"GoalUpdateLog: {self.timestamp}: new_goal = {self.goal}"
     
 class PlanUpdateLog(LLMLog):
     previous_plan: Plan
@@ -90,12 +104,18 @@ class PlanUpdateLog(LLMLog):
         self.previous_plan = previous_plan
         self.plan = plan
 
+    def __str__(self):
+        return f"PlanUpdateLog: {self.timestamp}: \nPrevious plan = {self.previous_plan},\nNew plan = {self.plan}\nFeedback = {self.feedback}"
+
 class ToolSelectionLog(LLMLog):
     tool: Tool
 
     def __init__(self, prompt: str, response: str, tool: Tool, feedback: Feedback|FeedbackBundle = None):
         super().__init__(prompt, response, "tool_selection", feedback=feedback)
         self.tool = tool
+
+    def __str__(self):
+        return f"ToolSelectionLog: {self.timestamp}: \nTool = {self.tool}\nFeedback = {self.feedback}"
 
 class TurnToActionLog(LLMLog):
     action: Action
@@ -104,6 +124,8 @@ class TurnToActionLog(LLMLog):
         super().__init__(prompt, response, "turn_to_action", feedback=feedback)
         self.action = action
     
+    def __str__(self):
+        return f"TurnToActionLog: {self.timestamp}: \nAction = {self.action}\nFeedback = {self.feedback}"
     
 class IterationLog(Log):
     context: Context
@@ -121,13 +143,36 @@ class IterationLog(Log):
     def clear(self):
         self.logs = []
 
+    def __str__(self):
+        return f"IterationLog: {self.timestamp}: \nContext = {self.context},\nLogs = {self.logs}\nFeedback = {self.feedback}"
+
 class Logger:
     logs: List[IterationLog]
+    logger: logging.Logger
 
     def __init__(self, logs: List[IterationLog] = None, context: Context = None):
         self.logs = logs or [IterationLog()]
         if logs is None and context is not None:
             self.add_context(context)
+
+        self.logger = logging.getLogger("my_logger")
+        self.logger.setLevel(logging.INFO)
+
+        # Create a logs directory if it doesn't exist
+        if not os.path.exists("logs"):
+            os.makedirs("logs")
+
+        # Create a file handler and set the log file path inside the logs directory
+        file_handler = logging.FileHandler(os.path.join("logs", "log_file.log"))
+
+        # Create a formatter to specify the log message format
+        formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+
+        # Set the formatter for the file handler
+        file_handler.setFormatter(formatter)
+
+        # Add the file handler to the logger
+        self.logger.addHandler(file_handler)
 
     def add_context(self, context: Context):
         self.logs[-1].context = context
@@ -141,7 +186,8 @@ class Logger:
         self.logs[-1].clear()
 
     def log(self, log: Log):
-        print(log)
+        log_message = str(log)
+        self.logger.info(log_message)
         self.logs[-1].append(log)
 
 class Context:
@@ -167,6 +213,9 @@ class Context:
     
     def deep_copy(self):
         return Context(self.scope.copy(), self.plan.copy(), self.current_step.copy(), self.finished)
+    
+    def __str__(self):
+        return f"Context: \nScope = {self.scope},\nPlan = {self.plan},\nCurrent step = {self.current_step},\nFinished = {self.finished},\nCurrent feedback = {self.current_feedback},\nData = {self.data}"
 
 class ContextManager:
     context: Context
@@ -183,23 +232,7 @@ class ContextManager:
         self.logger.add_context(self.context)
 
     def set_scope(self):
-        validation_instructions = ""
-        stop = False
-        requirements = None
-        while (stop != True):
-            if requirements is None:
-                requirements = self._first_ask_user_llm_call()
-                if requirements is None:
-                    break
-            else:
-                new_requirements = self._next_ask_user_llm_call(requirements, validation_instructions)
-                if new_requirements is None:
-                    break
-                requirements = self._merge_requirements(requirements, new_requirements)
-            data = self.validate_scope_completeness_llm_call(requirements)
-            feedback = data.feedback_bundle.get_last_feedback()
-            validation_instructions = data['validation_instructions']
-            stop = feedback.success
+        requirements = self._first_ask_user_llm_call()
         self.context.scope.set_requirements(requirements)
         self.context.scope.description = self._get_scope_description(self.context.scope.user_goal, requirements)
 
@@ -224,22 +257,14 @@ class ContextManager:
     def _get_requirements(self, questions: str, answer: str) -> Requirements:
         if answer == "stop":
             return None
-        validation_instructions = ""
-        stop = False
         user_goal = self.context.scope.user_goal
-        while (stop != True):
-            requirements = self._retrieve_requirements_llm_call(user_goal, questions, answer, validation_instructions)
-            data = self._validate_requirements_retrieved_llm_call(requirements, user_goal, questions, answer)
-            feedback = data.feedback_bundle.get_last_feedback()
-            validation_instructions = data['validation_instructions']
-            stop = feedback.success
+        requirements = self._retrieve_requirements_llm_call(user_goal, questions, answer)
         return requirements
     
-    def _retrieve_requirements_llm_call(self, user_goal: str, questions: str, answer: str, validation_instructions: str):
+    def _retrieve_requirements_llm_call(self, user_goal: str, questions: str, answer: str):
         prompt = self.prompts['retrieve_requirements'].format(user_goal=user_goal,
                                                               questions=questions, 
-                                                              answer=answer,
-                                                              validation_instructions=validation_instructions)
+                                                              answer=answer)
         response = self.llm_call(prompt)
         json_obj = self._parse_response(response)
         print(json_obj)
@@ -311,20 +336,12 @@ class ContextManager:
         return data
     
     def _get_scope_description(self, user_goal: str, requirements: Requirements) -> str:
-        validation_instructions = ""
-        stop = False
-        while stop != True:
-            description = self._describe_scope_llm_call(user_goal, requirements, validation_instructions)
-            data = self._validate_scope_description_llm_call(user_goal, requirements, description)
-            feedback = data.feedback_bundle.get_last_feedback()
-            validation_instructions = data['validation_instructions']
-            stop = feedback.success
+        description = self._describe_scope_llm_call(user_goal, requirements)
         return description
 
-    def _describe_scope_llm_call(self, user_goal: str, requirements: Requirements, validation_instructions: str) -> str:
+    def _describe_scope_llm_call(self, user_goal: str, requirements: Requirements) -> str:
         prompt = self.prompts['describe_scope'].format(user_goal=user_goal, 
-                                                       requirements=requirements,
-                                                       validation_instructions=validation_instructions)
+                                                       requirements=requirements)
         response = self.llm_call(prompt)
         self._log(LLMLog(prompt, response, 'describe_scope')) # Add log class for this
         return response
@@ -343,9 +360,12 @@ class ContextManager:
         
     def planner(self):
         previous_plan = self.context.plan
+        print("Previous plan: " + str(previous_plan))
         if previous_plan is None:
+            print("Creating plan")
             plan = self._get_plan_creation(self.context.scope.description)
         else:
+            print("Updating plan")
             plan = self._get_plan_update(self.context.scope.description, 
                                          self.context.current_feedback, 
                                          previous_plan)
@@ -353,19 +373,11 @@ class ContextManager:
         self.context.current_step = plan.get_current_step()
     
     def _get_plan_creation(self, description: str) -> Plan:
-        validation_instructions = ""
-        stop = False
-        while stop != True:
-            plan = self._create_plan_llm_call(description, validation_instructions)
-            data = self._validate_create_plan_llm_call(plan, description)
-            feedback = data.feedback_bundle.get_last_feedback()
-            validation_instructions = data['validation_instructions']
-            stop = feedback.success
+        plan = self._create_plan_llm_call(description)
         return plan
     
-    def _create_plan_llm_call(self, description: str, validation_instructions: str = "") -> Plan:
-        prompt = self.prompts['create_plan'].format(description=description,
-                                                    validation_instructions=validation_instructions)
+    def _create_plan_llm_call(self, description: str) -> Plan:
+        prompt = self.prompts['create_plan'].format(description=description)
         response = self.llm_call(prompt)
         json_obj = self._parse_response(response)
         plan = self._retrieve_plan(json_obj)
@@ -382,24 +394,16 @@ class ContextManager:
         self._log(ValidationLog(prompt, response, feedback, data.data))
         return data
     
-    def _get_plan_update(self, description: str, feedback: Feedback, previous_plan: Plan, validation_instructions: str = "") -> Plan:
-        stop = False
-        while stop != True:
-            plan = self._update_plan_llm_call(description, 
-                                              feedback, 
-                                              previous_plan, 
-                                              validation_instructions)
-            data = self._validate_update_plan_llm_call(plan, description)
-            feedback = data.feedback_bundle.get_last_feedback()
-            validation_instructions = data['validation_instructions']
-            stop = feedback.success
+    def _get_plan_update(self, description: str, feedback: Feedback, previous_plan: Plan) -> Plan:
+        plan = self._update_plan_llm_call(description,
+                                          feedback, 
+                                          previous_plan)
         return plan
     
-    def _update_plan_llm_call(self, description: str, feedback: Feedback, previous_plan: Plan, validation_instructions: str = "") -> Plan:
+    def _update_plan_llm_call(self, description: str, feedback: Feedback, previous_plan: Plan) -> Plan:
         prompt = self.prompts['update_plan'].format(description=description, 
                                                     feedback=feedback,
-                                                    previous_plan=previous_plan,
-                                                    validation_instructions=validation_instructions)
+                                                    previous_plan=previous_plan)
         response = self.llm_call(prompt)
         json_obj = self._parse_response(response)
         plan = self._retrieve_plan(json_obj)
@@ -436,11 +440,14 @@ class ContextManager:
         self.context.current_feedback = feedback
         self.logger.logs[-1].feedback = feedback
 
-    def get_candidate_tools(self, step: Step) -> DataBundle:
+    def get_candidate_tools(self, data: DataBundle):
+        step = data['active_step']
         #Semantic search to find potential tools
         pass
 
-    def tool_selection(self, step: Step, candidate_tools: List[Tool]) -> Tuple[List[Tool], Feedback]:
+    def tool_selection(self, data: DataBundle):
+        step = data['active_step']
+        candidate_tools = data['candidate_tools']
         prompt = self.prompts['tool_selection'].format(step=step, candidate_tools=candidate_tools)
         response = self.llm_call(prompt)
         json_obj = self._parse_response(response)
@@ -450,7 +457,10 @@ class ContextManager:
         self._log(ToolSelectionLog(prompt, response, tool, feedback=feedback))
         return tool, feedback_bundle
 
-    def turn_to_action(self, step: Step, tool: Tool, feedback_bundle: FeedbackBundle) -> Action:
+    def turn_to_action(self, data: DataBundle):
+        step = data['active_step']
+        tool = data['tool']
+        feedback_bundle = data.feedback_bundle
         prev_feedback = feedback_bundle.get_last_feedback()
         if prev_feedback.success:
             prompt = self.prompts['turn_to_action'].format(step=step, tool=tool)
@@ -465,7 +475,9 @@ class ContextManager:
         else:
             return None
 
-    def execute_action(self, action: Action, feedback_bundle: FeedbackBundle):
+    def execute_action(self, data: DataBundle):
+        action = data['action']
+        feedback_bundle = data.feedback_bundle
         if action:
             data = self.monitor(action.tool.func, action.tool_input)
             feedback = data.feedback_bundle.get_last_feedback()
@@ -505,21 +517,13 @@ class ContextManager:
             
     def _get_user_goal(self, user_query) -> str:
         # TODO: Set a limit on the number of times this can be called
-        validation_instructions = ""
-        stop = False
-        while stop != True:
-            user_goal = self._retrieve_goal_llm_call(user_query, validation_instructions)
-            data = self._validate_goal_llm_call(user_query, user_goal)
-            feedback = data.feedback_bundle.get_last_feedback()
-            validation_instructions = data['validation_instructions']
-            stop = feedback.success
+        user_goal = self._retrieve_goal_llm_call(user_query)
         self._log(GoalUpdateLog(None, user_goal))
         return user_goal
     
-    def _retrieve_goal_llm_call(self, user_query: str, validation_instructions: str = ""):
+    def _retrieve_goal_llm_call(self, user_query: str):
         print(user_query)
-        prompt = self.prompts['retrieve_goal'].format(user_query=user_query,
-                                                      validation_instructions=validation_instructions)
+        prompt = self.prompts['retrieve_goal'].format(user_query=user_query)
         response = self.llm_call(prompt)
         try:
             json_obj = self._parse_response(response)
